@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import PaymentModal from '../wallet/PaymentModal';
+import walletManager from '../../services/walletManager';
 import './Marketplace.css';
 
 const Marketplace = ({ user, onPurchase }) => {
   const [datasets, setDatasets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [categoryCounts, setCategoryCounts] = useState({});
   const [filters, setFilters] = useState({
     search: '',
     category: '',
@@ -19,11 +22,26 @@ const Marketplace = ({ user, onPurchase }) => {
     total: 0
   });
   const [searchTimeout, setSearchTimeout] = useState(null);
+  const [walletStatus, setWalletStatus] = useState(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedDataset, setSelectedDataset] = useState(null);
 
   const categories = [
     'research', 'business', 'finance', 'healthcare', 'technology',
     'education', 'government', 'environment', 'social', 'other'
   ];
+
+  useEffect(() => {
+    // Fetch category statistics on component mount
+    fetchCategoryStats();
+    // Load wallet status
+    loadWalletStatus();
+  }, []);
+
+  const loadWalletStatus = () => {
+    const status = walletManager.getConnectionStatus();
+    setWalletStatus(status);
+  };
 
   useEffect(() => {
     // Clear existing timeout
@@ -48,6 +66,16 @@ const Marketplace = ({ user, onPurchase }) => {
       }
     };
   }, [filters, pagination.current]);
+
+  const fetchCategoryStats = async () => {
+    try {
+      const response = await axios.get('http://localhost:5000/api/datasets/stats/categories');
+      setCategoryCounts(response.data.categoryCounts || {});
+    } catch (error) {
+      console.error('Error fetching category stats:', error);
+      setCategoryCounts({});
+    }
+  };
 
   const fetchDatasets = async () => {
     try {
@@ -123,18 +151,35 @@ const Marketplace = ({ user, onPurchase }) => {
       return;
     }
 
-    try {
-      const token = localStorage.getItem('token');
-      await axios.post(`http://localhost:5000/api/datasets/${dataset._id}/purchase`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      alert('Dataset purchased successfully!');
-      onPurchase && onPurchase(dataset);
-    } catch (error) {
-      console.error('Purchase error:', error);
-      alert('Failed to purchase dataset');
+    // Check if wallet is connected
+    if (!walletStatus?.isConnected) {
+      alert('Please connect a wallet first. Go to "Wallet Management" tab to connect your wallet.');
+      return;
     }
+
+    // Check if wallet supports the dataset's currency
+    const datasetCurrency = dataset.currency;
+    const walletChain = walletStatus.chain;
+    
+    if (datasetCurrency === 'WAL' && walletChain !== 'walrus') {
+      alert(`Please connect a Walrus wallet for ${datasetCurrency} payments. Go to "Wallet Management" tab to connect your wallet.`);
+      return;
+    }
+
+    // Show payment modal
+    setSelectedDataset(dataset);
+    setShowPaymentModal(true);
+  };
+
+  const handlePaymentSuccess = (paymentResult) => {
+    setShowPaymentModal(false);
+    setSelectedDataset(null);
+    alert(`Payment successful! Transaction: ${paymentResult.transactionHash}`);
+    onPurchase && onPurchase(selectedDataset);
+  };
+
+  const handlePaymentError = (error) => {
+    alert(`Payment failed: ${error}`);
   };
 
   const formatPrice = (price, currency) => {
@@ -151,10 +196,25 @@ const Marketplace = ({ user, onPurchase }) => {
 
   return (
     <div className="marketplace-container">
-      <div className="marketplace-header">
-        <h2>Data Marketplace</h2>
-        <p>Discover and purchase high-quality datasets</p>
-      </div>
+        <div className="marketplace-header">
+          <h2>Data Marketplace</h2>
+          <p>Discover and purchase high-quality datasets</p>
+          {walletStatus?.isConnected ? (
+            <div className="wallet-status-indicator">
+              <span className="status-icon">✅</span>
+              <span className="status-text">
+                Wallet Connected: {walletStatus.wallet} (WALRUS)
+              </span>
+            </div>
+          ) : (
+            <div className="wallet-status-indicator disconnected">
+              <span className="status-icon">❌</span>
+              <span className="status-text">
+                No wallet connected. Go to "Wallet Management" to connect a wallet.
+              </span>
+            </div>
+          )}
+        </div>
 
       <div className="marketplace-filters">
         <div className="filter-group">
@@ -169,6 +229,7 @@ const Marketplace = ({ user, onPurchase }) => {
         </div>
 
         <div className="filter-group">
+          <label>Category</label>
           <select
             value={filters.category}
             onChange={(e) => handleFilterChange('category', e.target.value)}
@@ -231,6 +292,38 @@ const Marketplace = ({ user, onPurchase }) => {
           >
             Clear Filters {getActiveFiltersCount() > 0 && `(${getActiveFiltersCount()})`}
           </button>
+        </div>
+      </div>
+
+      {/* Category Chips */}
+      <div className="category-chips">
+        <div className="category-chips-header">
+          <h3>Browse by Category</h3>
+          <span className="category-count">
+            {filters.category ? `Showing ${datasets.length} results for "${filters.category}"` : `Showing all ${datasets.length} datasets`}
+          </span>
+        </div>
+        <div className="category-chips-container">
+          <button
+            className={`category-chip ${!filters.category ? 'active' : ''}`}
+            onClick={() => handleFilterChange('category', '')}
+          >
+            All Categories
+          </button>
+          {categories.map(cat => (
+            <button
+              key={cat}
+              className={`category-chip ${filters.category === cat ? 'active' : ''}`}
+              onClick={() => handleFilterChange('category', cat)}
+            >
+              {cat.charAt(0).toUpperCase() + cat.slice(1)}
+              {categoryCounts[cat] && (
+                <span className="category-count-badge">
+                  {categoryCounts[cat]}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -314,6 +407,20 @@ const Marketplace = ({ user, onPurchase }) => {
             Next
           </button>
         </div>
+      )}
+
+          {/* Payment Modal */}
+      {showPaymentModal && selectedDataset && (
+        <PaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => {
+            setShowPaymentModal(false);
+            setSelectedDataset(null);
+          }}
+          dataset={selectedDataset}
+          onPaymentSuccess={handlePaymentSuccess}
+          onPaymentError={handlePaymentError}
+        />
       )}
     </div>
   );

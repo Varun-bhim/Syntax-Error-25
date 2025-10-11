@@ -76,7 +76,7 @@ router.get('/', optionalAuth, async (req, res) => {
     sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const datasets = await Dataset.find(query)
-      .populate('provider', 'username profile reputation')
+      .populate('provider', 'username profile reputation walletAddress')
       .sort(sortOptions)
       .limit(limit * 1)
       .skip((page - 1) * limit)
@@ -98,11 +98,45 @@ router.get('/', optionalAuth, async (req, res) => {
   }
 });
 
+// Get category statistics
+router.get('/stats/categories', async (req, res) => {
+  try {
+    const categoryStats = await Dataset.aggregate([
+      { 
+        $match: { 
+          status: 'published', 
+          visibility: 'public' 
+        } 
+      },
+      {
+        $group: {
+          _id: '$category',
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { count: -1 }
+      }
+    ]);
+
+    // Convert to object format for easier frontend usage
+    const categoryCounts = {};
+    categoryStats.forEach(stat => {
+      categoryCounts[stat._id] = stat.count;
+    });
+
+    res.json({ categoryCounts });
+  } catch (error) {
+    console.error('Get category stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch category statistics' });
+  }
+});
+
 // Get single dataset
 router.get('/:id', optionalAuth, async (req, res) => {
   try {
     const dataset = await Dataset.findById(req.params.id)
-      .populate('provider', 'username profile reputation')
+      .populate('provider', 'username profile reputation walletAddress')
       .populate('statistics.reviewCount');
 
     if (!dataset) {

@@ -16,14 +16,32 @@ A decentralized data marketplace built on Walrus storage, where data providers c
    # Option 1: Cross-platform (recommended)
    npm run dev
    
-   # Option 2: Windows batch file
+   # Option 2: Clean install and start
+   npm run dev:clean
+   
+   # Option 3: Windows batch file
    npm run dev:windows
    
-   # Option 3: PowerShell (Windows)
+   # Option 4: PowerShell (Windows)
    npm run dev:ps1
    ```
 
-3. **Access the application:**
+3. **Additional Development Commands:**
+   ```bash
+   # Install all dependencies (frontend + backend)
+   npm run install-all
+   
+   # Stop all running Node processes
+   npm run stop
+   
+   # Run only backend
+   npm run server
+   
+   # Run only frontend
+   npm run client
+   ```
+
+4. **Access the application:**
    - Frontend: http://localhost:3000
    - Backend API: http://localhost:5000
 

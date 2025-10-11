@@ -6,6 +6,7 @@ import Dashboard from './components/dashboard/Dashboard';
 import Marketplace from './components/marketplace/Marketplace';
 import UploadDataset from './components/upload/UploadDataset';
 import BuyerInterface from './components/buyer/BuyerInterface';
+import WalletManagement from './components/wallet/WalletManagement';
 import axios from 'axios';
 
 // Set axios base URL
@@ -108,6 +109,12 @@ function App() {
           >
             Sell Data
           </button>
+          <button 
+            className={`nav-link ${currentView === 'wallet' ? 'active' : ''}`}
+            onClick={() => setCurrentView('wallet')}
+          >
+            Wallet Management
+          </button>
         </div>
         <div className="nav-user">
           <span className="user-name">{user?.username}</span>
@@ -129,6 +136,9 @@ function App() {
         )}
         {currentView === 'upload' && (
           <UploadDataset user={user} onUploadComplete={handleUploadComplete} />
+        )}
+        {currentView === 'wallet' && (
+          <WalletManagement user={user} />
         )}
       </main>
     </div>

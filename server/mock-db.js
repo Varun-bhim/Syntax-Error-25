@@ -18,7 +18,8 @@ class MockDatabase {
       email: 'sample@example.com',
       password: 'hashedpassword',
       username: 'sampleuser',
-      role: 'both'
+      role: 'both',
+      walletAddress: '0xSampleProvider123456789'
     });
 
     // Create sample datasets
@@ -39,7 +40,7 @@ class MockDatabase {
       description: 'Global temperature and weather patterns data collected from meteorological stations worldwide over the past 50 years.',
       category: 'environment',
       price: 15.50,
-      currency: 'SUI',
+      currency: 'WAL',
       tags: ['climate', 'weather', 'research', 'environment'],
       license: 'MIT',
       language: 'en',
@@ -54,6 +55,18 @@ class MockDatabase {
       currency: 'WAL',
       tags: ['machine-learning', 'computer-vision', 'training-data', 'ai'],
       license: 'Apache 2.0',
+      language: 'en',
+      provider: sampleUser._id
+    });
+
+    const dataset4 = this.createDataset({
+      title: 'Scientific Research Data Collection',
+      description: 'Comprehensive research dataset containing experimental data from various scientific studies including physics, chemistry, and biology experiments.',
+      category: 'research',
+      price: 35.75,
+      currency: 'WAL',
+      tags: ['research', 'scientific', 'experimental', 'data'],
+      license: 'CC BY-SA 4.0',
       language: 'en',
       provider: sampleUser._id
     });
@@ -75,6 +88,12 @@ class MockDatabase {
     dataset3.commission = {
       platformFee: 0.05,
       providerEarning: dataset3.price * 0.95
+    };
+
+    dataset4.status = 'published';
+    dataset4.commission = {
+      platformFee: 0.05,
+      providerEarning: dataset4.price * 0.95
     };
 
     // Create a sample transaction for testing purchases

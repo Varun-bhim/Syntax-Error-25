@@ -76,6 +76,70 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Record a new transaction
+router.post('/', authenticateToken, async (req, res) => {
+  try {
+    const {
+      datasetId,
+      amount,
+      currency,
+      fee,
+      totalAmount,
+      sellerAmount,
+      sellerUserId,
+      transactionHash,
+      chain,
+      status = 'pending'
+    } = req.body;
+
+    // Validate required fields
+    if (!datasetId || !amount || !currency || !transactionHash) {
+      return res.status(400).json({ error: 'Missing required transaction fields' });
+    }
+
+    // Get dataset to find seller
+    const dataset = await Dataset.findById(datasetId).populate('provider');
+    if (!dataset) {
+      return res.status(404).json({ error: 'Dataset not found' });
+    }
+
+    // Create transaction record
+    const transaction = new Transaction({
+      transactionId: transactionHash,
+      buyer: req.user._id,
+      seller: dataset.provider._id,
+      dataset: datasetId,
+      amount: parseFloat(amount),
+      currency,
+      platformFee: fee || 0,
+      sellerAmount: sellerAmount || (parseFloat(amount) - (fee || 0)),
+      sellerUserId: sellerUserId || dataset.provider._id,
+      status,
+      paymentMethod: 'crypto',
+      chain,
+      transactionHash,
+      completedAt: status === 'completed' ? new Date() : null
+    });
+
+    await transaction.save();
+
+    res.status(201).json({
+      success: true,
+      transaction: {
+        id: transaction._id,
+        transactionId: transaction.transactionId,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        status: transaction.status,
+        transactionHash: transaction.transactionHash
+      }
+    });
+  } catch (error) {
+    console.error('Create transaction error:', error);
+    res.status(500).json({ error: 'Failed to create transaction' });
+  }
+});
+
 // Get transaction statistics
 router.get('/stats/overview', authenticateToken, async (req, res) => {
   try {
