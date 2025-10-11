@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import DownloadManager from './DownloadManager';
 import PaymentModal from './PaymentModal';
@@ -19,6 +19,7 @@ const BuyerInterface = ({ user, onPurchaseComplete }) => {
     sortBy: 'createdAt',
     sortOrder: 'desc'
   });
+  const [searchTimeout, setSearchTimeout] = useState(null);
 
   const categories = [
     'research', 'business', 'finance', 'healthcare', 'technology',
@@ -26,24 +27,50 @@ const BuyerInterface = ({ user, onPurchaseComplete }) => {
   ];
 
   useEffect(() => {
-    fetchDatasets();
+    // Clear existing timeout
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+
+    // For search, add debouncing
+    if (filters.search !== undefined) {
+      const timeout = setTimeout(() => {
+        fetchDatasets();
+      }, 300); // 300ms debounce
+      setSearchTimeout(timeout);
+    } else {
+      fetchDatasets();
+    }
+
     if (user) {
       fetchPurchaseHistory();
     }
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
   }, [user, filters]);
 
   const fetchDatasets = async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
+      
+      // Only add non-empty filter values
       Object.entries(filters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
+        if (value && value.toString().trim() !== '') {
+          params.append(key, value);
+        }
       });
 
       const response = await axios.get(`http://localhost:5000/api/datasets?${params}`);
-      setDatasets(response.data.datasets);
+      setDatasets(response.data.datasets || []);
     } catch (error) {
       console.error('Error fetching datasets:', error);
+      setDatasets([]);
     } finally {
       setLoading(false);
     }
@@ -63,6 +90,41 @@ const BuyerInterface = ({ user, onPurchaseComplete }) => {
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
+    
+    // For non-search filters, fetch immediately
+    if (key !== 'search') {
+      // Clear any existing search timeout
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+        setSearchTimeout(null);
+      }
+    }
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      category: '',
+      minPrice: '',
+      maxPrice: '',
+      search: '',
+      sortBy: 'createdAt',
+      sortOrder: 'desc'
+    });
+    
+    // Clear any existing search timeout
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+      setSearchTimeout(null);
+    }
+  };
+
+  const getActiveFiltersCount = () => {
+    let count = 0;
+    if (filters.search) count++;
+    if (filters.category) count++;
+    if (filters.minPrice || filters.maxPrice) count++;
+    if (filters.sortBy !== 'createdAt' || filters.sortOrder !== 'desc') count++;
+    return count;
   };
 
   const handlePurchase = (dataset) => {
@@ -143,6 +205,7 @@ const BuyerInterface = ({ user, onPurchaseComplete }) => {
                 onChange={(e) => handleFilterChange('search', e.target.value)}
                 className="search-input"
               />
+              {loading && <div className="loading-indicator">Searching...</div>}
             </div>
 
             <div className="filter-group">
@@ -167,6 +230,8 @@ const BuyerInterface = ({ user, onPurchaseComplete }) => {
                 value={filters.minPrice}
                 onChange={(e) => handleFilterChange('minPrice', e.target.value)}
                 className="price-input"
+                min="0"
+                step="0.01"
               />
               <input
                 type="number"
@@ -174,6 +239,8 @@ const BuyerInterface = ({ user, onPurchaseComplete }) => {
                 value={filters.maxPrice}
                 onChange={(e) => handleFilterChange('maxPrice', e.target.value)}
                 className="price-input"
+                min="0"
+                step="0.01"
               />
             </div>
 
@@ -193,6 +260,17 @@ const BuyerInterface = ({ user, onPurchaseComplete }) => {
                 <option value="price-desc">Price: High to Low</option>
                 <option value="statistics.downloads-desc">Most Popular</option>
               </select>
+            </div>
+
+            <div className="filter-group">
+              <button
+                onClick={clearFilters}
+                className="clear-filters-btn"
+                type="button"
+                disabled={getActiveFiltersCount() === 0}
+              >
+                Clear Filters {getActiveFiltersCount() > 0 && `(${getActiveFiltersCount()})`}
+              </button>
             </div>
           </div>
 

@@ -62,9 +62,14 @@ router.get('/', optionalAuth, async (req, res) => {
       if (maxPrice) query.price.$lte = parseFloat(maxPrice);
     }
 
-    // Search functionality
+    // Search functionality - use regex for more flexible search
     if (search) {
-      query.$text = { $search: search };
+      const searchRegex = new RegExp(search, 'i');
+      query.$or = [
+        { title: searchRegex },
+        { description: searchRegex },
+        { tags: { $in: [searchRegex] } }
+      ];
     }
 
     const sortOptions = {};
