@@ -91,16 +91,16 @@ function App() {
             Dashboard
           </button>
           <button 
-            className={`nav-link ${currentView === 'buyer' ? 'active' : ''}`}
-            onClick={() => setCurrentView('buyer')}
-          >
-            Buy Data
-          </button>
-          <button 
             className={`nav-link ${currentView === 'marketplace' ? 'active' : ''}`}
             onClick={() => setCurrentView('marketplace')}
           >
-            Browse
+            Browse & Buy Data
+          </button>
+          <button 
+            className={`nav-link ${currentView === 'buyer' ? 'active' : ''}`}
+            onClick={() => setCurrentView('buyer')}
+          >
+            My Purchases
           </button>
           <button 
             className={`nav-link ${currentView === 'upload' ? 'active' : ''}`}

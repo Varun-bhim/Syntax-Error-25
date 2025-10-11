@@ -2,6 +2,33 @@
 
 A decentralized data marketplace built on Walrus storage, where data providers can upload and monetize datasets while data buyers can discover, purchase, and download valuable data.
 
+## 🚀 Quick Start
+
+### Development Setup
+
+1. **Install all dependencies:**
+   ```bash
+   npm run install-all
+   ```
+
+2. **Start both frontend and backend:**
+   ```bash
+   # Option 1: Cross-platform (recommended)
+   npm run dev
+   
+   # Option 2: Windows batch file
+   npm run dev:windows
+   
+   # Option 3: PowerShell (Windows)
+   npm run dev:ps1
+   ```
+
+3. **Access the application:**
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:5000
+
+For detailed development instructions, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
 ## 🚀 Features
 
 ### For Data Providers

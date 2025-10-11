@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import './Marketplace.css';
 
 const Marketplace = ({ user, onPurchase }) => {
   const [datasets, setDatasets] = useState([]);
@@ -17,6 +18,7 @@ const Marketplace = ({ user, onPurchase }) => {
     pages: 1,
     total: 0
   });
+  const [searchTimeout, setSearchTimeout] = useState(null);
 
   const categories = [
     'research', 'business', 'finance', 'healthcare', 'technology',
@@ -24,7 +26,27 @@ const Marketplace = ({ user, onPurchase }) => {
   ];
 
   useEffect(() => {
-    fetchDatasets();
+    // Clear existing timeout
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+
+    // For search, add debouncing
+    if (filters.search !== undefined) {
+      const timeout = setTimeout(() => {
+        fetchDatasets();
+      }, 300); // 300ms debounce
+      setSearchTimeout(timeout);
+    } else {
+      fetchDatasets();
+    }
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
   }, [filters, pagination.current]);
 
   const fetchDatasets = async () => {
@@ -32,15 +54,23 @@ const Marketplace = ({ user, onPurchase }) => {
       setLoading(true);
       const params = new URLSearchParams({
         page: pagination.current,
-        limit: 12,
-        ...filters
+        limit: 12
+      });
+      
+      // Only add non-empty filter values
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value && value.toString().trim() !== '') {
+          params.append(key, value);
+        }
       });
 
       const response = await axios.get(`http://localhost:5000/api/datasets?${params}`);
-      setDatasets(response.data.datasets);
-      setPagination(response.data.pagination);
+      setDatasets(response.data.datasets || []);
+      setPagination(response.data.pagination || { current: 1, pages: 1, total: 0 });
     } catch (error) {
       console.error('Error fetching datasets:', error);
+      setDatasets([]);
+      setPagination({ current: 1, pages: 1, total: 0 });
     } finally {
       setLoading(false);
     }
@@ -49,6 +79,42 @@ const Marketplace = ({ user, onPurchase }) => {
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
     setPagination(prev => ({ ...prev, current: 1 }));
+    
+    // For non-search filters, fetch immediately
+    if (key !== 'search') {
+      // Clear any existing search timeout
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+        setSearchTimeout(null);
+      }
+    }
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      search: '',
+      category: '',
+      minPrice: '',
+      maxPrice: '',
+      sortBy: 'createdAt',
+      sortOrder: 'desc'
+    });
+    setPagination(prev => ({ ...prev, current: 1 }));
+    
+    // Clear any existing search timeout
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+      setSearchTimeout(null);
+    }
+  };
+
+  const getActiveFiltersCount = () => {
+    let count = 0;
+    if (filters.search) count++;
+    if (filters.category) count++;
+    if (filters.minPrice || filters.maxPrice) count++;
+    if (filters.sortBy !== 'createdAt' || filters.sortOrder !== 'desc') count++;
+    return count;
   };
 
   const handlePurchase = async (dataset) => {
@@ -99,6 +165,7 @@ const Marketplace = ({ user, onPurchase }) => {
             onChange={(e) => handleFilterChange('search', e.target.value)}
             className="search-input"
           />
+          {loading && <div className="loading-indicator">Searching...</div>}
         </div>
 
         <div className="filter-group">
@@ -123,6 +190,8 @@ const Marketplace = ({ user, onPurchase }) => {
             value={filters.minPrice}
             onChange={(e) => handleFilterChange('minPrice', e.target.value)}
             className="price-input"
+            min="0"
+            step="0.01"
           />
           <input
             type="number"
@@ -130,6 +199,8 @@ const Marketplace = ({ user, onPurchase }) => {
             value={filters.maxPrice}
             onChange={(e) => handleFilterChange('maxPrice', e.target.value)}
             className="price-input"
+            min="0"
+            step="0.01"
           />
         </div>
 
@@ -147,9 +218,19 @@ const Marketplace = ({ user, onPurchase }) => {
             <option value="createdAt-asc">Oldest First</option>
             <option value="price-asc">Price: Low to High</option>
             <option value="price-desc">Price: High to Low</option>
-            <option value="statistics.views-desc">Most Viewed</option>
-            <option value="statistics.purchases-desc">Most Popular</option>
+            <option value="statistics.downloads-desc">Most Popular</option>
           </select>
+        </div>
+
+        <div className="filter-group">
+          <button
+            onClick={clearFilters}
+            className="clear-filters-btn"
+            type="button"
+            disabled={getActiveFiltersCount() === 0}
+          >
+            Clear Filters {getActiveFiltersCount() > 0 && `(${getActiveFiltersCount()})`}
+          </button>
         </div>
       </div>
 

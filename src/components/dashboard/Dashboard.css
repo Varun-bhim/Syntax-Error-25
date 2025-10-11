@@ -845,19 +845,16 @@
   justify-content: space-between;
   align-items: flex-start;
 }
-
 .sales-header h3 {
   margin: 0 0 10px 0;
   color: #333;
   font-size: 24px;
 }
-
 .sales-header p {
   margin: 0;
   color: #666;
   font-size: 16px;
 }
-
 .refresh-btn {
   background: #28a745;
   color: white;
@@ -871,7 +868,6 @@
   align-items: center;
   gap: 5px;
 }
-
 .refresh-btn:hover:not(:disabled) {
   background: #218838;
 }
