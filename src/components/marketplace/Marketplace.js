@@ -93,7 +93,16 @@ const Marketplace = ({ user, onPurchase }) => {
       });
 
       const response = await axios.get(`http://localhost:5000/api/datasets?${params}`);
-      setDatasets(response.data.datasets || []);
+      let fetchedDatasets = response.data.datasets || [];
+      
+      // Filter out user's own datasets if user is logged in
+      if (user) {
+        fetchedDatasets = fetchedDatasets.filter(dataset => 
+          dataset.provider && dataset.provider._id !== user._id
+        );
+      }
+      
+      setDatasets(fetchedDatasets);
       setPagination(response.data.pagination || { current: 1, pages: 1, total: 0 });
     } catch (error) {
       console.error('Error fetching datasets:', error);
@@ -180,6 +189,75 @@ const Marketplace = ({ user, onPurchase }) => {
 
   const handlePaymentError = (error) => {
     alert(`Payment failed: ${error}`);
+  };
+
+  const handleDownloadDataset = async (dataset) => {
+    try {
+      if (!dataset.files || dataset.files.length === 0) {
+        alert('No files available for download');
+        return;
+      }
+
+      const token = localStorage.getItem('token');
+      
+      // If there's only one file, download it directly
+      if (dataset.files.length === 1) {
+        const file = dataset.files[0];
+        await downloadFile(dataset._id, file.walrusBlobId, file.name, token);
+      } else {
+        // If multiple files, show a modal to select which file to download
+        await showFileSelectionModal(dataset.files, dataset._id, token);
+      }
+
+    } catch (error) {
+      console.error('Error downloading dataset:', error);
+      alert('Failed to download dataset: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const downloadFile = async (datasetId, blobId, fileName, token) => {
+    try {
+      const response = await axios.get(`http://localhost:5000/api/datasets/${datasetId}/download/${blobId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      alert(`File "${fileName}" downloaded successfully!`);
+      
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      throw error;
+    }
+  };
+
+  const showFileSelectionModal = async (files, datasetId, token) => {
+    const selectedFile = prompt(
+      `Multiple files available. Please enter the file number to download:\n\n${files.map((file, index) => `${index + 1}. ${file.name}`).join('\n')}\n\nEnter file number (1-${files.length}):`
+    );
+
+    if (selectedFile) {
+      const fileIndex = parseInt(selectedFile) - 1;
+      if (fileIndex >= 0 && fileIndex < files.length) {
+        const file = files[fileIndex];
+        try {
+          await downloadFile(datasetId, file.walrusBlobId, file.name, token);
+        } catch (error) {
+          console.error('Error downloading selected file:', error);
+        }
+      } else {
+        alert('Invalid file number selected');
+      }
+    }
   };
 
   const formatPrice = (price, currency) => {
@@ -347,7 +425,7 @@ const Marketplace = ({ user, onPurchase }) => {
               <div className="dataset-meta">
                 <div className="meta-item">
                   <span className="meta-label">Provider:</span>
-                  <span className="meta-value">{dataset.provider?.username || 'Sample User'}</span>
+                  <span className="meta-value">{dataset.provider?.username || dataset.provider?.email || 'Unknown Provider'}</span>
                 </div>
                 <div className="meta-item">
                   <span className="meta-label">Files:</span>
@@ -373,12 +451,22 @@ const Marketplace = ({ user, onPurchase }) => {
                 <div className="dataset-price">
                   {formatPrice(dataset.price, dataset.currency)}
                 </div>
-                <button
-                  className="purchase-btn"
-                  onClick={() => handlePurchase(dataset)}
-                >
-                  Purchase
-                </button>
+                {dataset.hasAccess ? (
+                  <button
+                    className="download-btn"
+                    onClick={() => handleDownloadDataset(dataset)}
+                    style={{ background: '#28a745', color: 'white' }}
+                  >
+                    📥 Download
+                  </button>
+                ) : (
+                  <button
+                    className="purchase-btn"
+                    onClick={() => handlePurchase(dataset)}
+                  >
+                    Purchase
+                  </button>
+                )}
               </div>
             </div>
           ))

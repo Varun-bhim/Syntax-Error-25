@@ -7,10 +7,7 @@ const UploadDataset = ({ user, onUploadComplete }) => {
     description: '',
     category: '',
     price: '',
-    currency: 'WAL',
-    tags: '',
-    license: '',
-    language: 'en'
+    currency: 'WAL'
   });
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -39,6 +36,17 @@ const UploadDataset = ({ user, onUploadComplete }) => {
     e.preventDefault();
     
     if (step === 1) {
+      // Validate step 1 fields
+      if (!formData.title || !formData.description || !formData.category || !formData.price) {
+        alert('Please fill in all required fields');
+        return;
+      }
+      
+      if (parseFloat(formData.price) <= 0) {
+        alert('Price must be greater than 0');
+        return;
+      }
+      
       setStep(2);
       return;
     }
@@ -46,6 +54,11 @@ const UploadDataset = ({ user, onUploadComplete }) => {
     try {
       setUploading(true);
       const token = localStorage.getItem('token');
+      
+      if (!token) {
+        alert('Please log in to upload datasets');
+        return;
+      }
 
       // Create dataset
       const datasetResponse = await axios.post('http://localhost:5000/api/datasets', formData, {
@@ -85,16 +98,14 @@ const UploadDataset = ({ user, onUploadComplete }) => {
         description: '',
         category: '',
         price: '',
-        currency: 'WAL',
-        tags: '',
-        license: '',
-        language: 'en'
+        currency: 'WAL'
       });
       setFiles([]);
       setStep(1);
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Failed to upload dataset');
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to upload dataset';
+      alert(`Upload failed: ${errorMessage}`);
     } finally {
       setUploading(false);
     }
@@ -201,56 +212,11 @@ const UploadDataset = ({ user, onUploadComplete }) => {
                     className="form-select"
                   >
                     <option value="WAL">WAL</option>
-                    <option value="SUI">SUI</option>
                   </select>
                 </div>
               </div>
             </div>
 
-            <div className="form-group">
-              <label htmlFor="tags">Tags</label>
-              <input
-                type="text"
-                id="tags"
-                name="tags"
-                value={formData.tags}
-                onChange={handleInputChange}
-                className="form-input"
-                placeholder="Enter tags separated by commas"
-              />
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="license">License</label>
-                <input
-                  type="text"
-                  id="license"
-                  name="license"
-                  value={formData.license}
-                  onChange={handleInputChange}
-                  className="form-input"
-                  placeholder="e.g., MIT, CC BY 4.0"
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="language">Language</label>
-                <select
-                  id="language"
-                  name="language"
-                  value={formData.language}
-                  onChange={handleInputChange}
-                  className="form-select"
-                >
-                  <option value="en">English</option>
-                  <option value="es">Spanish</option>
-                  <option value="fr">French</option>
-                  <option value="de">German</option>
-                  <option value="zh">Chinese</option>
-                </select>
-              </div>
-            </div>
           </div>
         )}
 

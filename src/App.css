@@ -575,7 +575,7 @@
 }
 
 .user-info p {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.9);
   margin: 0;
 }
 
@@ -659,7 +659,7 @@
 }
 
 .stat-info p {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.8);
   margin: 0;
   font-size: 0.9rem;
 }
@@ -805,7 +805,7 @@
 }
 
 .meta-label {
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .meta-value {
@@ -887,13 +887,13 @@
 }
 
 .pagination-info {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.9);
   font-weight: 500;
 }
 
 .loading, .no-datasets {
   text-align: center;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.9);
   padding: 2rem;
   font-size: 1.1rem;
 }
@@ -1072,7 +1072,7 @@
 }
 
 .upload-text p {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.8);
   margin: 0.25rem 0;
 }
 
@@ -1114,7 +1114,7 @@
 }
 
 .file-size {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.8);
   font-size: 0.9rem;
 }
 

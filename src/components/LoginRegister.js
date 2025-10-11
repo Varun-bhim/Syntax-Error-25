@@ -10,25 +10,88 @@ export default function LoginRegister({ onLogin }) {
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
 
+  // Reset form when switching tabs
+  const handleTabChange = (newTab) => {
+    setTab(newTab);
+    setEmail('');
+    setPassword('');
+    setMessage('');
+    setIsLoading(false);
+    setEmailFocused(false);
+    setPasswordFocused(false);
+  };
+
   async function handleSubmit(e) {
     e.preventDefault();
     setMessage('');
     setIsLoading(true);
+    
+    // Clear any existing tokens and data before login/register
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Basic validation
+    if (!email || !password) {
+      setMessage('Please fill in all fields');
+      setIsLoading(false);
+      return;
+    }
+    
+    if (password.length < 6) {
+      setMessage('Password must be at least 6 characters long');
+      setIsLoading(false);
+      return;
+    }
+    
     const url = tab==='login' ? 'http://localhost:5000/api/auth/login' : 'http://localhost:5000/api/auth/register';
     try {
-      const response = await axios.post(url, { 
+      const requestData = { 
         email, 
-        password,
-        username: email.split('@')[0] // Generate username from email
+        password
+      };
+      
+      // Only add username for registration
+      if (tab === 'register') {
+        const timestamp = Date.now();
+        const randomSuffix = Math.random().toString(36).substr(2, 6);
+        requestData.username = email.split('@')[0] + timestamp + randomSuffix; // More unique username
+      }
+      
+      console.log('Making auth request for:', email);
+      
+      // Ensure no cached headers are sent
+      const response = await axios.post(url, requestData, {
+        headers: {
+          'Content-Type': 'application/json',
+          // Explicitly clear any cached authorization
+          'Authorization': undefined
+        }
       });
       
       if (response.data.token) {
-        onLogin(response.data.user, response.data.token);
+        if (tab === 'register') {
+          // For registration, just show success message and stay on register page
+          setMessage("Registration successful! Please login now.");
+          // Clear the form
+          setEmail('');
+          setPassword('');
+        } else {
+          // For login, proceed with authentication
+          localStorage.setItem('token', response.data.token);
+          console.log('Login successful:', {
+            user: response.data.user,
+            token: response.data.token ? 'present' : 'missing',
+            userId: response.data.user._id
+          });
+          onLogin(response.data.user, response.data.token);
+        }
       } else {
         setMessage(tab==='login' ? "Login successful!" : "Registration successful! Login now.");
       }
     } catch (err) {
-      setMessage(err.response?.data?.error || "Error");
+      console.error('Auth error:', err);
+      const errorMessage = err.response?.data?.error || err.message || "Connection error. Please check if the server is running.";
+      setMessage(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -71,13 +134,13 @@ export default function LoginRegister({ onLogin }) {
       <div className="tab-container mb-4">
         <button 
           className={`tab-button ${tab==='login' ? 'active' : ''}`}
-          onClick={()=>setTab('login')}
+          onClick={()=>handleTabChange('login')}
         >
           Login
         </button>
         <button 
           className={`tab-button ${tab==='register' ? 'active' : ''}`}
-          onClick={()=>setTab('register')}
+          onClick={()=>handleTabChange('register')}
         >
           Register
         </button>

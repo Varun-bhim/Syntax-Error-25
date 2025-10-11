@@ -8,9 +8,49 @@ class WalrusWalletService {
     this.userBalances = new Map(); // Store persistent balances per wallet address
     this.userToWalletMap = new Map(); // Map user IDs to their wallet addresses
     this.initialBalance = 1000; // Starting balance for new users
-  }
+    
+  // Load persistent data from localStorage
+  this.loadPersistentData();
+}
 
-  // Get available mock wallets
+// Load persistent data from localStorage
+loadPersistentData() {
+  try {
+    const savedBalances = localStorage.getItem('walrusWalletBalances');
+    const savedMappings = localStorage.getItem('walrusWalletMappings');
+    
+    if (savedBalances) {
+      const balances = JSON.parse(savedBalances);
+      this.userBalances = new Map(Object.entries(balances));
+      console.log('Loaded persistent wallet balances:', balances);
+    }
+    
+    if (savedMappings) {
+      const mappings = JSON.parse(savedMappings);
+      this.userToWalletMap = new Map(Object.entries(mappings));
+      console.log('Loaded persistent wallet mappings:', mappings);
+    }
+  } catch (error) {
+    console.error('Error loading persistent wallet data:', error);
+  }
+}
+
+// Save persistent data to localStorage
+savePersistentData() {
+  try {
+    const balances = Object.fromEntries(this.userBalances);
+    const mappings = Object.fromEntries(this.userToWalletMap);
+    
+    localStorage.setItem('walrusWalletBalances', JSON.stringify(balances));
+    localStorage.setItem('walrusWalletMappings', JSON.stringify(mappings));
+    
+    console.log('Saved persistent wallet data');
+  } catch (error) {
+    console.error('Error saving persistent wallet data:', error);
+  }
+}
+
+// Get available mock wallets
   async getAvailableWallets() {
     return [
       {
@@ -35,6 +75,13 @@ class WalrusWalletService {
       if (userId && this.userToWalletMap.has(userId)) {
         walletAddress = this.userToWalletMap.get(userId);
         console.log(`Mock Walrus: User ${userId} reconnecting to existing wallet: ${walletAddress}`);
+        
+        // Ensure the wallet has a balance (don't reset if it exists)
+        if (!this.userBalances.has(walletAddress)) {
+          this.userBalances.set(walletAddress, this.initialBalance);
+          this.savePersistentData();
+          console.log(`Mock Walrus: Initialized balance for existing wallet: ${walletAddress}`);
+        }
       } else {
         // Generate new wallet address
         walletAddress = `0xWalrusMock${Math.random().toString(36).substr(2, 9)}`;
@@ -73,6 +120,61 @@ class WalrusWalletService {
     }
   }
 
+  // Connect to real Walrus wallet
+  async connectRealWallet(walletAddress, userId = null) {
+    try {
+      // Validate wallet address format
+      if (!this.isValidAddress(walletAddress)) {
+        return { success: false, error: 'Invalid wallet address format' };
+      }
+
+      // Simulate connection delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const realAccount = {
+        address: walletAddress,
+        chain: 'walrus',
+        walletName: 'Real Walrus Wallet',
+        isReal: true,
+        userId: userId
+      };
+
+      // Map user ID to wallet address if provided
+      if (userId) {
+        this.userToWalletMap.set(userId, walletAddress);
+        console.log(`Real Walrus: Mapped user ${userId} to wallet ${walletAddress}`);
+      }
+
+      this.connectedWallet = { id: 'real-walrus-wallet', name: realAccount.walletName };
+      this.connectedAccount = realAccount;
+      this.isConnected = true;
+      this.isMockMode = false;
+
+      console.log('Real Walrus: Wallet connected successfully', realAccount);
+
+      return {
+        success: true,
+        account: realAccount,
+        wallet: realAccount.walletName
+      };
+    } catch (error) {
+      console.error('Real Walrus: Error connecting wallet:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Validate wallet address format
+  isValidAddress(address) {
+    return address && 
+           typeof address === 'string' && 
+           address.startsWith('0x') && 
+           address.length === 42 && 
+           /^0x[a-fA-F0-9]{40}$/.test(address);
+  }
+
   // Disconnect mock wallet
   async disconnectWallet() {
     try {
@@ -104,13 +206,17 @@ class WalrusWalletService {
 
       const accountId = this.connectedAccount.address;
       
-      // Initialize balance for new users
-      if (!this.userBalances.has(accountId)) {
-        this.userBalances.set(accountId, this.initialBalance);
+      // Get balance from persistent storage (don't reset to initial balance)
+      let balance = this.userBalances.get(accountId);
+      
+      // Only initialize with initial balance if this is truly a new wallet
+      if (balance === undefined) {
+        balance = this.initialBalance;
+        this.userBalances.set(accountId, balance);
+        this.savePersistentData(); // Save the new balance
+        console.log(`Mock Walrus: New wallet initialized with ${balance} WAL`);
       }
       
-      const balance = this.userBalances.get(accountId);
-
       console.log(`Mock Walrus: Balance for ${this.connectedAccount.address}: ${balance} WAL`);
 
       return {
@@ -190,6 +296,8 @@ class WalrusWalletService {
   // Update balance after transaction
   updateBalance(amount, isDebit = true) {
     if (!this.connectedAccount) return false;
+
+    console.log('Updating balance:');
     
     const accountId = this.connectedAccount.address;
     
@@ -208,6 +316,7 @@ class WalrusWalletService {
     }
     
     this.userBalances.set(accountId, newBalance);
+    this.savePersistentData(); // Save to localStorage
     console.log(`Mock Walrus: Balance updated. ${isDebit ? 'Debited' : 'Credited'} ${amount} WAL. New balance: ${newBalance} WAL`);
     return true;
   }
@@ -215,6 +324,17 @@ class WalrusWalletService {
   // Get wallet address by user ID
   getWalletAddressByUserId(userId) {
     return this.userToWalletMap.get(userId);
+  }
+
+  // Get balance by user ID
+  getBalanceByUserId(userId) {
+    const walletAddress = this.userToWalletMap.get(userId);
+    if (!walletAddress) {
+      return { success: false, error: 'No wallet found for user' };
+    }
+    
+    const balance = this.userBalances.get(walletAddress) || 0;
+    return { success: true, balance: balance, walletAddress: walletAddress };
   }
 
   // Credit balance to any wallet address (for seller payments)
@@ -228,6 +348,7 @@ class WalrusWalletService {
     const newBalance = currentBalance + amount;
     
     this.userBalances.set(walletAddress, newBalance);
+    this.savePersistentData(); // Save to localStorage
     console.log(`Mock Walrus: Credited ${amount} WAL to ${walletAddress}. New balance: ${newBalance} WAL`);
     return true;
   }

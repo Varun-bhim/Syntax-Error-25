@@ -1,4 +1,5 @@
 import walletManager from './walletManager';
+import mongoWalletService from './mongoWalletService';
 import axios from 'axios';
 
 class PaymentService {
@@ -30,11 +31,17 @@ class PaymentService {
 
       // Fetch dataset information to get seller details
       const datasetResponse = await axios.get(`${this.apiBaseUrl}/api/datasets/${datasetId}`);
-      const dataset = datasetResponse.data;
+      const dataset = datasetResponse.data.dataset || datasetResponse.data;
       
       if (!dataset) {
         throw new Error('Dataset not found');
       }
+
+      console.log('Dataset fetched for payment:', {
+        id: dataset._id,
+        provider: dataset.provider,
+        providerId: dataset.provider?._id || dataset.provider
+      });
 
       // Calculate total amount including fees
       const fee = this.transactionFees[currency] || 0;
@@ -47,39 +54,72 @@ class PaymentService {
         throw new Error(`Please connect a WALRUS wallet for ${currency} payments`);
       }
 
-      // Send payment to platform (mock implementation)
-      const paymentResult = await walletManager.sendTokens(
-        '0xPlatformWallet', // Platform wallet address
-        totalAmount.toString(),
-        null
-      );
-
-      if (!paymentResult.success) {
-        throw new Error(paymentResult.error || 'Payment failed');
-      }
-
-      // Update buyer's wallet balance after successful payment
-      const balanceUpdated = walletManager.updateBalance(totalAmount, true);
-      if (!balanceUpdated) {
+      // Check buyer's balance first
+      const buyerBalance = await walletManager.getBalance();
+      if (!buyerBalance.success || buyerBalance.balance < totalAmount) {
         throw new Error('Insufficient balance for payment');
       }
 
-      // Credit seller's wallet (amount minus platform fee)
-      const sellerAmount = parseFloat(amount); // Seller gets the full amount, platform fee is separate
-      const sellerUserId = dataset.provider?._id;
+      // Deduct from buyer's wallet using MongoDB
+      const buyerDeduction = await mongoWalletService.updateBalance(
+        totalAmount, 
+        'debit', 
+        `Purchase: ${dataset.title}`, 
+        `tx_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`
+      );
       
-      if (sellerUserId) {
-        const sellerChain = 'walrus';
-        const sellerCredited = walletManager.creditBalanceByUserId(sellerUserId, sellerAmount, sellerChain);
-        
-        if (!sellerCredited) {
-          console.warn('Failed to credit seller wallet, but payment was successful');
-        } else {
-          console.log(`Successfully credited ${sellerAmount} ${currency} to seller ${sellerUserId}`);
-        }
-      } else {
-        console.warn('No seller user ID found for dataset');
+      if (!buyerDeduction.success) {
+        throw new Error('Failed to deduct from buyer wallet');
       }
+
+      // Credit seller's wallet (full amount, no platform fee deduction)
+      const sellerAmount = parseFloat(amount); // Seller gets the full amount, platform fee is separate
+      const sellerUserId = dataset.provider?._id || dataset.provider;
+      
+      if (!sellerUserId) {
+        throw new Error('No seller user ID found for dataset');
+      }
+
+      console.log('Attempting to credit seller:', {
+        sellerUserId: sellerUserId,
+        sellerAmount: sellerAmount,
+        sellerEmail: dataset.provider?.email || 'Unknown'
+      });
+
+      // Credit seller by making a direct API call to credit their wallet
+      try {
+        const sellerCreditResponse = await axios.post(
+          `${this.apiBaseUrl}/api/wallets/credit-seller`,
+          {
+            sellerUserId: sellerUserId,
+            amount: sellerAmount,
+            description: `Sale: ${dataset.title}`,
+            transactionId: `tx_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        if (!sellerCreditResponse.data.success) {
+          throw new Error('Failed to credit seller wallet');
+        }
+        
+        console.log(`Successfully credited ${sellerAmount} ${currency} to seller ${sellerUserId}`);
+      } catch (error) {
+        console.error('Error crediting seller:', error);
+        throw new Error('Failed to credit seller wallet');
+      }
+
+      // Mock transaction result for successful payment
+      const paymentResult = {
+        success: true,
+        transactionHash: `0xWalrusMock${Date.now()}${Math.random().toString(36).substr(2, 8)}`,
+        status: 'success'
+      };
 
       // Record transaction in backend
       const transactionRecord = await this.recordTransaction({
@@ -94,6 +134,18 @@ class PaymentService {
         chain,
         status: 'completed'
       });
+
+      // Trigger wallet refresh for both buyer and seller
+      if (typeof window !== 'undefined' && window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent('walletTransaction', {
+          detail: {
+            type: 'payment',
+            sellerId: sellerUserId,
+            amount: parseFloat(amount),
+            currency
+          }
+        }));
+      }
 
       return {
         success: true,
@@ -118,9 +170,12 @@ class PaymentService {
   // Record transaction in backend
   async recordTransaction(transactionData) {
     try {
+      const token = localStorage.getItem('token');
       const response = await axios.post(`${this.apiBaseUrl}/api/transactions`, {
         ...transactionData,
         timestamp: new Date().toISOString()
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
       });
 
       return response.data;

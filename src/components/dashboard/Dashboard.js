@@ -290,10 +290,7 @@ const Dashboard = ({ user, onLogout }) => {
     totalDatasets: 0,
     totalSales: 0,
     totalEarnings: 0,
-    totalPurchases: 0
   });
-  const [purchasedDatasets, setPurchasedDatasets] = useState([]);
-  const [loadingPurchases, setLoadingPurchases] = useState(false);
   const [userDatasets, setUserDatasets] = useState([]);
   const [loadingDatasets, setLoadingDatasets] = useState(false);
   const [salesData, setSalesData] = useState([]);
@@ -319,33 +316,12 @@ const Dashboard = ({ user, onLogout }) => {
         totalDatasets: datasetsRes.data.pagination.total,
         totalSales: transactionsRes.data.sales.totalSales,
         totalEarnings: transactionsRes.data.sales.totalEarned,
-        totalPurchases: transactionsRes.data.purchases.totalPurchases
       });
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
     }
   };
 
-  const fetchPurchasedDatasets = useCallback(async () => {
-    try {
-      setLoadingPurchases(true);
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:5000/api/transactions/my-transactions', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      // Filter only completed purchases (where user is the buyer)
-      const purchases = response.data.transactions.filter(
-        transaction => transaction.buyer === user.id && transaction.status === 'completed'
-      );
-      
-      setPurchasedDatasets(purchases);
-    } catch (error) {
-      console.error('Error fetching purchased datasets:', error);
-    } finally {
-      setLoadingPurchases(false);
-    }
-  }, [user.id]);
 
   const fetchUserDatasets = useCallback(async () => {
     try {
@@ -389,25 +365,21 @@ const Dashboard = ({ user, onLogout }) => {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'purchases') {
-      fetchPurchasedDatasets();
-    } else if (activeTab === 'datasets') {
+    if (activeTab === 'datasets') {
       fetchUserDatasets();
     } else if (activeTab === 'sales') {
       fetchSalesData();
     }
-  }, [activeTab, user.id, fetchPurchasedDatasets, fetchUserDatasets, fetchSalesData]);
+  }, [activeTab, user.id, fetchUserDatasets, fetchSalesData]);
 
   // Auto-refresh data every 30 seconds when on relevant tabs
   useEffect(() => {
-    const tabsToAutoRefresh = ['purchases', 'datasets', 'sales'];
+    const tabsToAutoRefresh = ['datasets', 'sales'];
     if (!tabsToAutoRefresh.includes(activeTab)) return;
 
     const interval = setInterval(() => {
       setLastRefreshTime(new Date());
-      if (activeTab === 'purchases') {
-        fetchPurchasedDatasets();
-      } else if (activeTab === 'datasets') {
+      if (activeTab === 'datasets') {
         fetchUserDatasets();
       } else if (activeTab === 'sales') {
         fetchSalesData();
@@ -417,7 +389,31 @@ const Dashboard = ({ user, onLogout }) => {
     }, 30000); // 30 seconds
 
     return () => clearInterval(interval);
-  }, [activeTab, fetchPurchasedDatasets, fetchUserDatasets, fetchSalesData, fetchDashboardStats]);
+  }, [activeTab, fetchUserDatasets, fetchSalesData, fetchDashboardStats]);
+
+  const handleDownloadOwnDataset = async (dataset) => {
+    try {
+      if (!dataset.files || dataset.files.length === 0) {
+        alert('No files available for download');
+        return;
+      }
+
+      const token = localStorage.getItem('token');
+      
+      // If there's only one file, download it directly
+      if (dataset.files.length === 1) {
+        const file = dataset.files[0];
+        await downloadFile(dataset._id, file.walrusBlobId, file.name, token);
+      } else {
+        // If multiple files, show a modal to select which file to download
+        await showFileSelectionModal(dataset.files, dataset._id, token);
+      }
+
+    } catch (error) {
+      console.error('Error downloading dataset:', error);
+      alert('Failed to download dataset: ' + (error.response?.data?.error || error.message));
+    }
+  };
 
   const handleDownloadDataset = async (transaction) => {
     try {
@@ -498,9 +494,7 @@ const Dashboard = ({ user, onLogout }) => {
     fetchDashboardStats();
     
     // Refresh current tab data
-    if (activeTab === 'purchases') {
-      fetchPurchasedDatasets();
-    } else if (activeTab === 'datasets') {
+    if (activeTab === 'datasets') {
       fetchUserDatasets();
     } else if (activeTab === 'sales') {
       fetchSalesData();
@@ -703,7 +697,6 @@ Transaction Status:
   const tabs = [
     { id: 'overview', label: 'Overview', icon: '📊' },
     { id: 'datasets', label: 'My Datasets', icon: '📁' },
-    { id: 'purchases', label: 'Purchases', icon: '🛒' },
     { id: 'sales', label: 'Sales', icon: '💰' },
     { id: 'upload', label: 'Upload Dataset', icon: '⬆️' }
   ];
@@ -715,9 +708,6 @@ Transaction Status:
           <h2>Welcome back, {user.username}!</h2>
           <p>Manage your data marketplace activities</p>
         </div>
-        <button className="logout-btn" onClick={onLogout}>
-          Logout
-        </button>
       </div>
 
       <div className="dashboard-tabs">
@@ -756,13 +746,6 @@ Transaction Status:
                 <div className="stat-info">
                   <h3>{stats.totalEarnings.toFixed(2)} WAL</h3>
                   <p>Total Earnings</p>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon">🛒</div>
-                <div className="stat-info">
-                  <h3>{stats.totalPurchases}</h3>
-                  <p>Total Purchases</p>
                 </div>
               </div>
             </div>
@@ -867,6 +850,13 @@ Transaction Status:
                         View Details
                       </button>
                       <button 
+                        className="btn-success"
+                        onClick={() => handleDownloadOwnDataset(dataset)}
+                        style={{ background: '#28a745', color: 'white' }}
+                      >
+                        📥 Download
+                      </button>
+                      <button 
                         className="btn-danger"
                         onClick={() => handleDeleteDataset(dataset)}
                         style={{ background: '#dc3545', color: 'white' }}
@@ -881,114 +871,6 @@ Transaction Status:
           </div>
         )}
 
-        {activeTab === 'purchases' && (
-          <div className="purchases-section">
-            <div className="purchases-header">
-              <div className="header-content">
-                <div>
-                  <h3>My Purchased Datasets</h3>
-                  <p>Access and manage your purchased datasets</p>
-                </div>
-                <div className="refresh-section">
-                  <button 
-                    className="refresh-btn"
-                    onClick={() => {
-                      setLastRefreshTime(new Date());
-                      fetchPurchasedDatasets();
-                      fetchDashboardStats();
-                    }}
-                    disabled={loadingPurchases}
-                  >
-                    {loadingPurchases ? '⏳' : '🔄'} Refresh
-                  </button>
-                  {lastRefreshTime && (
-                    <div className="last-refresh">
-                      Last updated: {lastRefreshTime.toLocaleTimeString()}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {loadingPurchases ? (
-              <div className="loading">Loading your purchases...</div>
-            ) : purchasedDatasets.length === 0 ? (
-              <div className="no-purchases">
-                <div className="empty-state">
-                  <div className="empty-icon">🛒</div>
-                  <h4>No purchases yet</h4>
-                  <p>You haven't purchased any datasets yet. Start exploring the marketplace to find valuable data!</p>
-                  <button 
-                    className="browse-btn"
-                    onClick={() => setActiveTab('overview')}
-                  >
-                    Browse Marketplace
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="purchases-list">
-                {purchasedDatasets.map(transaction => (
-                  <div key={transaction._id} className="purchase-item">
-                    <div className="purchase-info">
-                      <div className="dataset-header">
-                        <h4>{transaction.dataset?.title || 'Dataset'}</h4>
-                        <span className="purchase-date">
-                          Purchased on {formatDate(transaction.createdAt)}
-                        </span>
-                      </div>
-                      
-                      <div className="purchase-details">
-                        <div className="detail-item">
-                          <span className="label">Amount:</span>
-                          <span className="value">{formatPrice(transaction.amount, transaction.currency)}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="label">Status:</span>
-                          <span className={`status ${transaction.status}`}>{transaction.status}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="label">Downloads:</span>
-                          <span className="value">{transaction.downloadCount || 0} / {transaction.maxDownloads || 1}</span>
-                        </div>
-                        {transaction.dataset?.category && (
-                          <div className="detail-item">
-                            <span className="label">Category:</span>
-                            <span className="value">{transaction.dataset.category}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="purchase-actions">
-                      {transaction.status === 'completed' && transaction.accessGranted && (
-                        <div className="action-buttons">
-                          <button 
-                            className="download-btn"
-                            onClick={() => handleDownloadDataset(transaction)}
-                          >
-                            📥 Download Dataset
-                          </button>
-                          <button 
-                            className="view-btn"
-                            onClick={() => handleViewDetails(transaction)}
-                          >
-                            👁️ View Details
-                          </button>
-                        </div>
-                      )}
-                      {transaction.status === 'pending' && (
-                        <div className="pending-status">
-                          <span className="pending-text">⏳ Processing...</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {activeTab === 'sales' && (
           <div className="sales-section">

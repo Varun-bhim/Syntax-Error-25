@@ -18,7 +18,10 @@
 
 .user-info h2 {
   margin: 0;
-  color: #333;
+  background: linear-gradient(135deg, #00d4ff 0%, #7c3aed 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   font-size: 28px;
 }
 

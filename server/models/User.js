@@ -78,8 +78,9 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 // Get public profile
 userSchema.methods.getPublicProfile = function() {
   return {
-    id: this._id,
+    _id: this._id,
     username: this.username,
+    email: this.email,
     role: this.role,
     profile: this.profile,
     reputation: this.reputation,

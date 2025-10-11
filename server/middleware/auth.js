@@ -14,15 +14,25 @@ const authenticateToken = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, JWT_SECRET);
+    console.log('Token decoded for user ID:', decoded.userId);
+    
     const user = await User.findById(decoded.userId).select('-password');
     
     if (!user || !user.isActive) {
+      console.log('User not found or inactive:', decoded.userId);
       return res.status(401).json({ error: 'Invalid or inactive user' });
     }
+
+    console.log('Authenticated user:', {
+      id: user._id,
+      email: user.email,
+      username: user.username
+    });
 
     req.user = user;
     next();
   } catch (error) {
+    console.error('Authentication error:', error);
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({ error: 'Invalid token' });
     }
@@ -100,11 +110,14 @@ const requireOwnership = (resourceModel, resourceIdParam = 'id') => {
 
 // Generate JWT token
 const generateToken = (userId) => {
-  return jwt.sign(
+  const token = jwt.sign(
     { userId },
     JWT_SECRET,
     { expiresIn: '7d' }
   );
+  
+  console.log('Generated token for user:', userId);
+  return token;
 };
 
 module.exports = {

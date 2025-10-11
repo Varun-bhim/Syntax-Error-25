@@ -1,4 +1,5 @@
 import walrusWalletService from './walrusWalletService';
+import mongoWalletService from './mongoWalletService';
 
 class WalletManager {
   constructor() {
@@ -7,6 +8,7 @@ class WalletManager {
     this.walletServices = {
       walrus: walrusWalletService
     };
+    this.mongoService = mongoWalletService;
   }
 
   // Get all available wallets for a specific chain
@@ -51,6 +53,36 @@ class WalletManager {
     }
   }
 
+  // Connect to real Walrus wallet using address
+  async connectRealWalrusWallet(walletAddress, userId = null) {
+    try {
+      this.currentChain = 'walrus';
+      const service = this.walletServices['walrus'];
+      
+      if (!service) {
+        throw new Error('Walrus service not available');
+      }
+
+      const result = await service.connectRealWallet(walletAddress, userId);
+      
+      if (result.success) {
+        return {
+          success: true,
+          chain: 'walrus',
+          wallet: 'Real Walrus Wallet',
+          account: walletAddress,
+          isMock: false,
+          isConnected: true
+        };
+      } else {
+        return result;
+      }
+    } catch (error) {
+      console.error('Error connecting to real Walrus wallet:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
   // Disconnect current wallet
   async disconnectWallet() {
     try {
@@ -72,19 +104,9 @@ class WalletManager {
   // Get balance for current wallet
   async getBalance(coinType = null) {
     try {
-      if (!this.currentChain) {
-        throw new Error('No wallet connected');
-      }
-
-      const service = this.walletServices[this.currentChain];
-      
-      if (this.currentChain === 'sui') {
-        return await service.getBalance(coinType);
-      } else if (this.currentChain === 'walrus') {
-        return await service.getBalance();
-      }
-      
-      throw new Error(`Unsupported chain: ${this.currentChain}`);
+      // Use MongoDB service for balance
+      const result = await this.mongoService.getBalance();
+      return result;
     } catch (error) {
       console.error('Error getting balance:', error);
       return { success: false, error: error.message };
@@ -116,12 +138,9 @@ class WalletManager {
   // Get transaction history
   async getTransactionHistory(limit = 10) {
     try {
-      if (!this.currentChain) {
-        throw new Error('No wallet connected');
-      }
-
-      const service = this.walletServices[this.currentChain];
-      return await service.getTransactionHistory(limit);
+      // Use MongoDB service for transaction history
+      const result = await this.mongoService.getTransactionHistory(limit);
+      return result;
     } catch (error) {
       console.error('Error getting transaction history:', error);
       return { success: false, error: error.message };
@@ -192,6 +211,16 @@ class WalletManager {
     }
     
     return null;
+  }
+
+  // Get balance by user ID
+  getBalanceByUserId(userId, chain) {
+    const service = this.walletServices[chain];
+    if (service && service.getBalanceByUserId) {
+      return service.getBalanceByUserId(userId);
+    }
+    
+    return { success: false, error: 'Service not available' };
   }
 
   // Get current connection status

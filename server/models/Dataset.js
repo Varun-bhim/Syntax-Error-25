@@ -24,7 +24,7 @@ const datasetSchema = new mongoose.Schema({
   },
   currency: {
     type: String,
-    enum: ['WAL', 'SUI'],
+    enum: ['WAL'],
     default: 'WAL'
   },
   category: {
@@ -49,11 +49,11 @@ const datasetSchema = new mongoose.Schema({
     lowercase: true
   }],
   files: [{
-    name: String,
-    size: Number,
-    type: String,
-    walrusBlobId: String, 
-    checksum: String,
+    name: { type: String, required: true },
+    size: { type: Number, required: true },
+    type: { type: String, required: true },
+    walrusBlobId: { type: String, required: true },
+    checksum: { type: String, required: true },
     uploadedAt: { type: Date, default: Date.now }
   }],
   metadata: {
@@ -89,7 +89,7 @@ const datasetSchema = new mongoose.Schema({
   },
   commission: {
     platformFee: { type: Number, default: 0.05 }, // 5% platform fee
-    providerEarning: { type: Number, required: true }
+    providerEarning: { type: Number, default: 0 }
   },
   accessControl: {
     requiresApproval: { type: Boolean, default: false },
@@ -112,13 +112,6 @@ datasetSchema.pre('save', function(next) {
   next();
 });
 
-// Calculate provider earning
-datasetSchema.pre('save', function(next) {
-  if (this.price && this.commission.platformFee) {
-    this.commission.providerEarning = this.price * (1 - this.commission.platformFee);
-  }
-  next();
-});
 
 // Index for search
 datasetSchema.index({ title: 'text', description: 'text', tags: 'text' });

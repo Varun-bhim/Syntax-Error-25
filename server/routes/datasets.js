@@ -154,6 +154,12 @@ router.get('/:id', optionalAuth, async (req, res) => {
       $inc: { 'statistics.views': 1 }
     });
 
+    console.log('Dataset fetched for payment:', {
+      id: dataset._id,
+      provider: dataset.provider,
+      providerId: dataset.provider?._id
+    });
+
     res.json({ dataset });
   } catch (error) {
     console.error('Get dataset error:', error);
@@ -164,13 +170,26 @@ router.get('/:id', optionalAuth, async (req, res) => {
 // Create new dataset
 router.post('/', authenticateToken, requireRole(['provider', 'both']), async (req, res) => {
   try {
+    console.log('Dataset creation attempt:', {
+      user: req.user?.email,
+      role: req.user?.role,
+      title: req.body.title,
+      category: req.body.category
+    });
+    
     const datasetData = {
       ...req.body,
-      provider: req.user._id
+      provider: req.user._id,
+      commission: {
+        platformFee: 0.05, // 5% platform fee
+        providerEarning: req.body.price * 0.95 // 95% goes to provider
+      }
     };
 
     const dataset = new Dataset(datasetData);
     await dataset.save();
+    
+    console.log('Dataset created successfully:', dataset._id);
 
     res.status(201).json({
       message: 'Dataset created successfully',
@@ -203,12 +222,23 @@ router.post('/:id/upload', authenticateToken, requireOwnership(Dataset), upload.
     }));
 
     // Update dataset with file information
-    dataset.files.push(...uploadedFiles);
-    dataset.metadata.fileCount = dataset.files.length;
-    dataset.metadata.totalSize = dataset.files.reduce((sum, file) => sum + file.size, 0);
-    dataset.metadata.lastUpdated = new Date();
+    const updatedFiles = [...(dataset.files || []), ...uploadedFiles];
+    
+    const updatedMetadata = {
+      ...dataset.metadata,
+      fileCount: updatedFiles.length,
+      totalSize: updatedFiles.reduce((sum, file) => sum + file.size, 0),
+      lastUpdated: new Date()
+    };
 
-    await dataset.save();
+    const updatedDataset = await Dataset.findByIdAndUpdate(
+      dataset._id,
+      {
+        files: updatedFiles,
+        metadata: updatedMetadata
+      },
+      { new: true }
+    );
 
     res.json({
       message: 'Files uploaded successfully',
@@ -392,6 +422,116 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Download dataset error:', error);
     res.status(500).json({ error: 'Failed to download dataset' });
+  }
+});
+
+// Get dataset details with access check
+router.get('/:id/details', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    const dataset = await Dataset.findById(id)
+      .populate('provider', 'username email')
+      .populate('reviews.user', 'username');
+
+    if (!dataset) {
+      return res.status(404).json({ success: false, error: 'Dataset not found' });
+    }
+
+    // Check if user has access (either owner or has purchased)
+    const hasAccess = dataset.provider._id.toString() === userId.toString() || 
+                     await Transaction.findOne({ 
+                       dataset: id, 
+                       buyer: userId, 
+                       status: 'completed',
+                       accessGranted: true 
+                     });
+
+    res.json({
+      success: true,
+      dataset: {
+        ...dataset.toObject(),
+        hasAccess: !!hasAccess
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting dataset details:', error);
+    res.status(500).json({ success: false, error: 'Failed to get dataset details' });
+  }
+});
+
+// Download dataset file
+router.get('/:id/download/:blobId', authenticateToken, async (req, res) => {
+  try {
+    const { id, blobId } = req.params;
+    const userId = req.user._id;
+
+    // Find the dataset
+    const dataset = await Dataset.findById(id).populate('provider', 'username email');
+    if (!dataset) {
+      return res.status(404).json({ success: false, error: 'Dataset not found' });
+    }
+
+    // Check if user has access to download (either owner or has purchased)
+    const hasAccess = dataset.provider._id.toString() === userId.toString() || 
+                     await Transaction.findOne({ 
+                       dataset: id, 
+                       buyer: userId, 
+                       status: 'completed',
+                       accessGranted: true 
+                     });
+
+    if (!hasAccess) {
+      return res.status(403).json({ success: false, error: 'Access denied. You must purchase this dataset to download it.' });
+    }
+
+    // Find the specific file
+    const file = dataset.files.find(f => f.walrusBlobId === blobId);
+    if (!file) {
+      return res.status(404).json({ success: false, error: 'File not found' });
+    }
+
+    // Create mock file content based on file type
+    let fileContent;
+    let contentType = 'application/octet-stream';
+    
+    if (file.name.endsWith('.csv')) {
+      contentType = 'text/csv';
+      fileContent = `Name,Age,City\nJohn,25,New York\nJane,30,Los Angeles\nBob,35,Chicago`;
+    } else if (file.name.endsWith('.json')) {
+      contentType = 'application/json';
+      fileContent = JSON.stringify({
+        "dataset": file.name,
+        "description": "Sample dataset file",
+        "data": [
+          {"id": 1, "value": "Sample 1"},
+          {"id": 2, "value": "Sample 2"},
+          {"id": 3, "value": "Sample 3"}
+        ]
+      }, null, 2);
+    } else if (file.name.endsWith('.txt')) {
+      contentType = 'text/plain';
+      fileContent = `This is a sample text file: ${file.name}\n\nContent:\n- Line 1\n- Line 2\n- Line 3`;
+    } else {
+      fileContent = `Sample data file: ${file.name}\nSize: ${file.size} bytes\nType: ${file.type}`;
+    }
+    
+    const fileData = Buffer.from(fileContent, 'utf8');
+    
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${file.name}"`);
+    res.setHeader('Content-Length', fileData.length);
+    
+    res.send(fileData);
+
+    // Log the download
+    console.log(`File downloaded: ${file.name} by user ${userId} from dataset ${id}`);
+
+  } catch (error) {
+    console.error('Error downloading file:', error);
+    res.status(500).json({ success: false, error: 'Failed to download file' });
   }
 });
 

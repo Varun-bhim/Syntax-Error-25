@@ -7,10 +7,15 @@ import Marketplace from './components/marketplace/Marketplace';
 import UploadDataset from './components/upload/UploadDataset';
 import BuyerInterface from './components/buyer/BuyerInterface';
 import WalletManagement from './components/wallet/WalletManagement';
+import Profile from './components/Profile';
 import axios from 'axios';
 
 // Set axios base URL
 axios.defaults.baseURL = 'http://localhost:5000';
+
+// Clear any existing axios interceptors to prevent token caching
+axios.interceptors.request.clear();
+axios.interceptors.response.clear();
 
 function App() {
   const [user, setUser] = useState(null);
@@ -24,31 +29,103 @@ function App() {
   const checkAuthStatus = async () => {
     try {
       const token = localStorage.getItem('token');
+      const sessionId = localStorage.getItem('sessionId');
+      const storedUserId = localStorage.getItem('userId');
+      
       if (token) {
         const response = await axios.get('http://localhost:5000/api/auth/profile', {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setUser(response.data.user);
+        
+        const userData = response.data.user;
+        
+        // Validate that the user ID matches what we expect
+        if (storedUserId && userData._id !== storedUserId) {
+          console.warn('User ID mismatch! Clearing session.');
+          localStorage.clear();
+          sessionStorage.clear();
+          setUser(null);
+          setCurrentView('login');
+          return;
+        }
+        
+        if (sessionId) {
+          userData.sessionId = sessionId;
+        }
+        
+        console.log('Auth check successful:', userData);
+        console.log('Current user ID:', userData._id);
+        console.log('Stored user ID:', storedUserId);
+        console.log('Session ID:', userData.sessionId);
+        
+        setUser(userData);
         setCurrentView('dashboard');
       }
     } catch (error) {
       console.error('Auth check failed:', error);
-      localStorage.removeItem('token');
+      localStorage.clear();
+      sessionStorage.clear();
     } finally {
       setLoading(false);
     }
   };
 
   const handleLogin = (userData, token) => {
-    setUser(userData);
-    localStorage.setItem('token', token);
-    setCurrentView('dashboard');
+    // Clear any existing user data first
+    setUser(null);
+    
+    // Clear all possible cached data
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Clear any cached data in memory
+    if (window.caches) {
+      caches.keys().then(names => {
+        names.forEach(name => {
+          caches.delete(name);
+        });
+      });
+    }
+    
+    // Force a small delay to ensure state is cleared
+    setTimeout(() => {
+      // Add a unique session ID to prevent caching issues
+      const sessionId = Date.now() + Math.random().toString(36).substr(2, 9);
+      const userWithSession = {
+        ...userData,
+        sessionId: sessionId
+      };
+      
+      setUser(userWithSession);
+      localStorage.setItem('token', token);
+      localStorage.setItem('sessionId', sessionId);
+      localStorage.setItem('userId', userData._id); // Store user ID separately
+      setCurrentView('dashboard');
+      console.log('User logged in:', userWithSession);
+      console.log('Stored user ID:', userData._id);
+      console.log('User email:', userData.email);
+    }, 100);
   };
 
   const handleLogout = () => {
     setUser(null);
-    localStorage.removeItem('token');
+    localStorage.clear(); // Clear ALL localStorage data
+    sessionStorage.clear(); // Clear ALL sessionStorage data
+    
+    // Clear any cached data in memory
+    if (window.caches) {
+      caches.keys().then(names => {
+        names.forEach(name => {
+          caches.delete(name);
+        });
+      });
+    }
+    
     setCurrentView('login');
+    
+    // Force a complete page reload with cache busting
+    const timestamp = Date.now();
+    window.location.href = `${window.location.origin}${window.location.pathname}?t=${timestamp}`;
   };
 
   const handleUploadComplete = () => {
@@ -117,28 +194,36 @@ function App() {
           </button>
         </div>
         <div className="nav-user">
-          <span className="user-name">{user?.username}</span>
+          <button 
+            className="nav-link profile-link"
+            onClick={() => setCurrentView('profile')}
+          >
+            {user?.username}
+          </button>
           <button className="logout-btn" onClick={handleLogout}>
             Logout
           </button>
         </div>
       </nav>
 
-      <main className="main-content">
+      <main className="main-content" key={`main-${user?._id}-${user?.sessionId}-${Date.now()}`}>
         {currentView === 'dashboard' && (
-          <Dashboard user={user} onLogout={handleLogout} />
+          <Dashboard key={`dashboard-${user?._id}-${user?.sessionId}-${Date.now()}`} user={user} onLogout={handleLogout} />
         )}
         {currentView === 'buyer' && (
-          <BuyerInterface user={user} onPurchaseComplete={handleUploadComplete} />
+          <BuyerInterface key={`buyer-${user?._id}-${user?.sessionId}-${Date.now()}`} user={user} onPurchaseComplete={handleUploadComplete} />
         )}
         {currentView === 'marketplace' && (
-          <Marketplace user={user} />
+          <Marketplace key={`marketplace-${user?._id}-${user?.sessionId}-${Date.now()}`} user={user} />
         )}
         {currentView === 'upload' && (
-          <UploadDataset user={user} onUploadComplete={handleUploadComplete} />
+          <UploadDataset key={`upload-${user?._id}-${user?.sessionId}-${Date.now()}`} user={user} onUploadComplete={handleUploadComplete} />
         )}
         {currentView === 'wallet' && (
-          <WalletManagement user={user} />
+          <WalletManagement key={`wallet-${user?._id}-${user?.sessionId}-${Date.now()}`} user={user} />
+        )}
+        {currentView === 'profile' && (
+          <Profile key={`profile-${user?._id}-${user?.sessionId}-${Date.now()}`} user={user} onLogout={handleLogout} />
         )}
       </main>
     </div>

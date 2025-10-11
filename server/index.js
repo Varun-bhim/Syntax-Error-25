@@ -11,10 +11,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Routes - using mock routes for testing
-app.use('/api/auth', require('./routes/auth-mock'));
-app.use('/api/datasets', require('./routes/datasets-mock'));
-app.use('/api/transactions', require('./routes/transactions-mock'));
+// Routes - using real routes with MongoDB
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/datasets', require('./routes/datasets'));
+app.use('/api/transactions', require('./routes/transactions'));
+app.use('/api/wallets', require('./routes/wallets'));
 
 // Health check
 app.get('/api/health', (req, res) => {

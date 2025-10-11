@@ -118,6 +118,7 @@ router.post('/', authenticateToken, async (req, res) => {
       paymentMethod: 'crypto',
       chain,
       transactionHash,
+      accessGranted: status === 'completed',
       completedAt: status === 'completed' ? new Date() : null
     });
 
