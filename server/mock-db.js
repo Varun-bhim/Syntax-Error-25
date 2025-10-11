@@ -76,6 +76,24 @@ class MockDatabase {
       platformFee: 0.05,
       providerEarning: dataset3.price * 0.95
     };
+
+    // Create a sample transaction for testing purchases
+    const sampleTransaction = this.createTransaction({
+      transactionId: 'TXN_' + Date.now(),
+      buyer: sampleUser._id,
+      seller: sampleUser._id,
+      dataset: dataset1._id,
+      amount: dataset1.price,
+      currency: dataset1.currency,
+      platformFee: dataset1.price * 0.05,
+      sellerAmount: dataset1.price * 0.95,
+      status: 'completed',
+      paymentMethod: 'wallet',
+      accessGranted: true,
+      downloadCount: 0,
+      maxDownloads: 1,
+      completedAt: new Date()
+    });
   }
 
   // User operations
@@ -141,6 +159,15 @@ class MockDatabase {
       return dataset;
     }
     return null;
+  }
+
+  deleteDataset(id) {
+    const datasetId = parseInt(id);
+    if (this.datasets.has(datasetId)) {
+      this.datasets.delete(datasetId);
+      return true;
+    }
+    return false;
   }
 
   findDatasetsByProvider(providerId) {

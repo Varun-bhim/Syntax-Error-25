@@ -32,16 +32,38 @@ const authenticateToken = async (req, res, next) => {
 // Get transaction statistics overview
 router.get('/stats/overview', authenticateToken, async (req, res) => {
   try {
-    // Mock transaction stats
-    const stats = {
-      totalTransactions: 0,
-      totalEarnings: 0,
-      totalSpent: 0,
-      pendingEarnings: 0,
-      recentTransactions: []
-    };
+    const userId = req.user._id;
+    
+    // Get user's transactions
+    const userTransactions = Array.from(mockDb.transactions.values())
+      .filter(transaction => 
+        transaction.buyer === userId || transaction.seller === userId
+      );
 
-    res.json({ stats });
+    // Calculate purchase stats
+    const purchases = userTransactions.filter(t => t.buyer === userId && t.status === 'completed');
+    const totalPurchases = purchases.length;
+    const totalSpent = purchases.reduce((sum, t) => sum + (t.amount || 0), 0);
+
+    // Calculate sales stats
+    const sales = userTransactions.filter(t => t.seller === userId && t.status === 'completed');
+    const totalSales = sales.length;
+    const totalEarned = sales.reduce((sum, t) => sum + (t.sellerAmount || t.amount * 0.95 || 0), 0);
+
+    res.json({
+      purchases: {
+        totalPurchases,
+        totalSpent,
+        averagePurchase: totalPurchases > 0 ? totalSpent / totalPurchases : 0
+      },
+      sales: {
+        totalSales,
+        totalEarned,
+        averageSale: totalSales > 0 ? totalEarned / totalSales : 0,
+        totalFees: sales.reduce((sum, t) => sum + (t.platformFee || t.amount * 0.05 || 0), 0)
+      },
+      recentTransactions: userTransactions.slice(0, 5)
+    });
   } catch (error) {
     console.error('Get transaction stats error:', error);
     res.status(500).json({ error: 'Failed to fetch transaction statistics' });
@@ -54,7 +76,27 @@ router.get('/my-transactions', authenticateToken, async (req, res) => {
     const transactions = Array.from(mockDb.transactions.values())
       .filter(transaction => 
         transaction.buyer === req.user._id || transaction.seller === req.user._id
-      );
+      )
+      .map(transaction => {
+        // Populate dataset information
+        const dataset = mockDb.findDatasetById(transaction.dataset);
+        return {
+          ...transaction,
+          dataset: dataset ? {
+            _id: dataset._id,
+            title: dataset.title,
+            description: dataset.description,
+            category: dataset.category,
+            price: dataset.price,
+            currency: dataset.currency,
+            files: dataset.files || [],
+            status: dataset.status,
+            provider: dataset.provider,
+            createdAt: dataset.createdAt,
+            statistics: dataset.statistics
+          } : null
+        };
+      });
 
     res.json({
       transactions,
@@ -73,7 +115,8 @@ router.get('/my-transactions', authenticateToken, async (req, res) => {
 // Get single transaction
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
-    const transaction = mockDb.findTransactionById(req.params.id);
+    const transactionId = parseInt(req.params.id);
+    const transaction = mockDb.findTransactionById(transactionId);
 
     if (!transaction) {
       return res.status(404).json({ error: 'Transaction not found' });
