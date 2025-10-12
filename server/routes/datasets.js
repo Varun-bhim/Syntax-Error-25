@@ -2,6 +2,9 @@ const express = require('express');
 const multer = require('multer');
 const Dataset = require('../models/Dataset');
 const Transaction = require('../models/Transaction');
+
+const WalrusStorageService = require('../services/walrusStorage');
+const walrusStorage = new WalrusStorageService();
 const { authenticateToken, optionalAuth, requireRole, requireOwnership } = require('../middleware/auth');
 
 const router = express.Router();
@@ -211,15 +214,22 @@ router.post('/:id/upload', authenticateToken, requireOwnership(Dataset), upload.
       return res.status(400).json({ error: 'No files uploaded' });
     }
 
-    // Process files and upload to Walrus (placeholder for now)
-    const uploadedFiles = files.map(file => ({
-      name: file.originalname,
-      size: file.size,
-      type: file.mimetype,
-      walrusBlobId: `blob_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Placeholder
-      checksum: 'placeholder_checksum',
-      uploadedAt: new Date()
-    }));
+
+    // Upload files to Walrus (mocked in-memory for dev)
+    const uploadedFiles = [];
+    for (const file of files) {
+      const blobInfo = await walrusStorage.uploadFile(file.buffer, file.originalname, {
+        contentType: file.mimetype
+      });
+      uploadedFiles.push({
+        name: file.originalname,
+        size: file.size,
+        type: file.mimetype,
+        walrusBlobId: blobInfo.blobId,
+        checksum: blobInfo.checksum,
+        uploadedAt: blobInfo.uploadedAt
+      });
+    }
 
     // Update dataset with file information
     const updatedFiles = [...(dataset.files || []), ...uploadedFiles];
@@ -431,9 +441,10 @@ router.get('/:id/details', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const userId = req.user._id;
 
+
+    // Remove reviews population since reviews is not a field in Dataset
     const dataset = await Dataset.findById(id)
-      .populate('provider', 'username email')
-      .populate('reviews.user', 'username');
+      .populate('provider', 'username email');
 
     if (!dataset) {
       return res.status(404).json({ success: false, error: 'Dataset not found' });
@@ -493,38 +504,21 @@ router.get('/:id/download/:blobId', authenticateToken, async (req, res) => {
       return res.status(404).json({ success: false, error: 'File not found' });
     }
 
-    // Create mock file content based on file type
-    let fileContent;
-    let contentType = 'application/octet-stream';
-    
-    if (file.name.endsWith('.csv')) {
-      contentType = 'text/csv';
-      fileContent = `Name,Age,City\nJohn,25,New York\nJane,30,Los Angeles\nBob,35,Chicago`;
-    } else if (file.name.endsWith('.json')) {
-      contentType = 'application/json';
-      fileContent = JSON.stringify({
-        "dataset": file.name,
-        "description": "Sample dataset file",
-        "data": [
-          {"id": 1, "value": "Sample 1"},
-          {"id": 2, "value": "Sample 2"},
-          {"id": 3, "value": "Sample 3"}
-        ]
-      }, null, 2);
-    } else if (file.name.endsWith('.txt')) {
-      contentType = 'text/plain';
-      fileContent = `This is a sample text file: ${file.name}\n\nContent:\n- Line 1\n- Line 2\n- Line 3`;
-    } else {
-      fileContent = `Sample data file: ${file.name}\nSize: ${file.size} bytes\nType: ${file.type}`;
+
+    // Download the actual file from Walrus storage (mocked in-memory for dev)
+    let fileData;
+    try {
+      fileData = await walrusStorage.downloadFile(file.walrusBlobId);
+    } catch (err) {
+      return res.status(404).json({ success: false, error: 'File not found in Walrus storage' });
     }
+    const contentType = file.type || 'application/octet-stream';
     
-    const fileData = Buffer.from(fileContent, 'utf8');
-    
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${file.name}"`);
-    res.setHeader('Content-Length', fileData.length);
-    
-    res.send(fileData);
+
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="${file.name}"`);
+  res.setHeader('Content-Length', fileData.length);
+  res.send(fileData);
 
     // Log the download
     console.log(`File downloaded: ${file.name} by user ${userId} from dataset ${id}`);

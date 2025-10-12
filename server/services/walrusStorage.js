@@ -34,65 +34,68 @@ class WalrusStorageService {
 
   async uploadFile(fileBuffer, fileName, metadata = {}) {
     try {
-      console.log(`Uploading file to Walrus: ${fileName}`);
-      
-      // Generate unique blob ID
+      console.log(`Uploading file to Walrus (disk): ${fileName}`);
+      const uploadsDir = require('path').resolve(__dirname, '../uploads');
+      const fs = require('fs');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir);
+      }
+      // Generate unique blob ID and file path
       const mockBlobId = `blob_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      // Store the actual file content in memory (replace with Walrus in production)
-      this.mockBlobs.set(mockBlobId, {
-        content: Buffer.from(fileBuffer), // Ensure we store the actual buffer
-        fileName: fileName,
-        size: fileBuffer.length,
-        contentType: metadata.contentType || 'application/octet-stream',
-        uploadedAt: new Date(),
-        checksum: this.calculateChecksum(fileBuffer),
-        metadata: metadata
-      });
-      
+      const diskFileName = `${mockBlobId}_${fileName}`;
+      const filePath = require('path').join(uploadsDir, diskFileName);
+      // Write file to disk
+      fs.writeFileSync(filePath, fileBuffer);
       // Simulate upload delay
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
       const blobInfo = {
         blobId: mockBlobId,
         fileName: fileName,
+        diskFileName,
+        filePath,
         size: fileBuffer.length,
         contentType: metadata.contentType || 'application/octet-stream',
         uploadedAt: new Date(),
         checksum: this.calculateChecksum(fileBuffer),
-        walrusUrl: `https://walrus.testnet.sui.io/blob/${mockBlobId}` // Mock URL
+        walrusUrl: `file://${filePath}`
       };
-
-      console.log(`File uploaded successfully: ${mockBlobId} (${fileBuffer.length} bytes)`);
+      // Save file info in memory for quick lookup (optional, not required for persistence)
+      this.mockBlobs.set(mockBlobId, blobInfo);
+      console.log(`File uploaded and saved to disk: ${filePath}`);
       return blobInfo;
-      
     } catch (error) {
-      console.error('Error uploading file to Walrus:', error);
-      throw new Error(`Failed to upload file to Walrus: ${error.message}`);
+      console.error('Error uploading file to Walrus (disk):', error);
+      throw new Error(`Failed to upload file to Walrus (disk): ${error.message}`);
     }
   }
 
   async downloadFile(blobId) {
     try {
-      console.log(`Downloading file from Walrus: ${blobId}`);
-      
-      // Check if blob exists in our mock storage
-      if (!this.mockBlobs.has(blobId)) {
-        throw new Error(`Blob ${blobId} not found`);
+      console.log(`Downloading file from Walrus (disk): ${blobId}`);
+      const fs = require('fs');
+      const path = require('path');
+      let filePath = null;
+      // Try to get from memory first
+      if (this.mockBlobs.has(blobId)) {
+        filePath = this.mockBlobs.get(blobId).filePath;
+      } else {
+        // Fallback: scan uploads dir for file
+        const uploadsDir = path.resolve(__dirname, '../uploads');
+        const files = fs.readdirSync(uploadsDir);
+        const match = files.find(f => f.startsWith(blobId + '_'));
+        if (match) filePath = path.join(uploadsDir, match);
       }
-      
-      const blobData = this.mockBlobs.get(blobId);
-      
+      if (!filePath || !fs.existsSync(filePath)) {
+        throw new Error(`Blob ${blobId} not found on disk`);
+      }
       // Simulate download delay
       await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Return the actual stored content
-      console.log(`File downloaded successfully: ${blobId} (${blobData.content.length} bytes)`);
-      return blobData.content;
-      
+      const fileBuffer = fs.readFileSync(filePath);
+      console.log(`File downloaded from disk: ${filePath}`);
+      return fileBuffer;
     } catch (error) {
-      console.error('Error downloading file from Walrus:', error);
-      throw new Error(`Failed to download file from Walrus: ${error.message}`);
+      console.error('Error downloading file from Walrus (disk):', error);
+      throw new Error(`Failed to download file from Walrus (disk): ${error.message}`);
     }
   }
 
